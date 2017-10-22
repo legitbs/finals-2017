@@ -1,0 +1,13 @@
+To create a raw 8-bit signed mono sample at 32khz:
+
+ffmpeg -i input.wav -f s8 -ar 32000 -ac 1 -acodec pcm_s8 output.raw
+
+General usage:
+
+* Add a channel
+* Add a pattern
+* Add a sample
+* Add an instrument
+* Add notes to the pattern
+* Render the song
+

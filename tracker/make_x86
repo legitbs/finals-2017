@@ -1,0 +1,5 @@
+#!/bin/bash
+
+make clean
+for source in *.c; do gcc -m32 -O2 -c "$source"; done
+gcc -m32 -O2 *.o -o challenge

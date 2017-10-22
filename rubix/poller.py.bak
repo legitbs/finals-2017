@@ -1,0 +1,348 @@
+#!/usr/bin/python 
+
+import sys, os
+import socket
+import select
+import re
+import time
+import random
+import cLEMENCy
+
+Polls = [ \
+{ 'code': '''
+main  0005df7: 4820000          ml      R01, 0x0
+main  0005dfa: 4434040          mh      R01, 0x14040
+main  0005dfd: 4840000          ml      R02, 0x0
+main  0005e00: 4454048          mh      R02, 0x14048
+main  0005e03: 4900041          ml      R08, 0x41
+main  0005e06: 2c202000000000   sts     R08, [R01]
+main  0005e0f: 2c202000000008   sts     R08, [R01 + 0x1]
+main  0005e18: 2c202000000010   sts     R08, [R01 + 0x2]
+main  0005e21: 2c202000000018   sts     R08, [R01 + 0x3]
+main  0005e30: 4900004          ml      R08, 0x4
+main  0005e33: 2d204000000000   stt     R08, [R02]
+
+''', 'sc': '', 'solution': "D' U F' B B' F U' R B' F U' D B' L L' B R' L U' R R' L F' D D' L F' D D' U", 'result': "AAAA" },  \
+{ 'code': '''
+main  0005dfd: 4900006          ml      R08, 0x6
+main  0005e0c: 084a04f          muis.   R09, R08, 0x9
+main  0005df7: 4820000          ml      R01, 0x0
+main  0005dfa: 4434040          mh      R01, 0x14040
+main  0005e0f: 2c242000000000   sts     R09, [R01]
+main  0005e15: 4900000          ml      R08, 0x0
+main  0005e18: 4514048          mh      R08, 0x14048
+main  0005e1b: 180a101          or.     R01, R08, R08
+main  0005e1e: 4900001          ml      R08, 0x1
+main  0005e21: 2d202000000000   stt     R08, [R01]
+''', 'sc': '', 'solution': "B' F L' D B' L U' R D' U L' B D' U F' D R' F L' B B' U L' R B' F F' D D' F", 'result': "6" },  \
+]
+
+
+class cLEMENCy:
+	R00 = 0
+	R01 = 1
+	R02 = 2
+	R03 = 3
+	R04 = 4
+	R05 = 5
+	R06 = 6
+	R07 = 7
+	R08 = 8
+	R09 = 9
+	R10 = 10
+	R11 = 11
+	R12 = 12
+	R13 = 13
+	R14 = 14
+	R15 = 15
+	R16 = 16
+	R17 = 17
+	R18 = 18
+	R19 = 19
+	R20 = 20
+	R21 = 21
+	R22 = 22
+	R23 = 23
+	R24 = 24
+	R25 = 25
+	R26 = 26
+	R27 = 27
+	R28 = 28
+	ST  = 29
+	RA  = 30
+	PC  = 31
+
+	def Bin2Hex(self, Bin):
+		Hex = ''
+		if len(Bin) == 54:
+			Hex = hex(int(Bin[0:2], 2))
+			for x in xrange(2, 54, 4):
+				Hex += hex(int(Bin[x:x+4], 2))
+		elif len(Bin) == 27:
+			Hex = hex(int(Bin[0:3], 2))
+			for x in xrange(3, 27, 4):
+				Hex += hex(int(Bin[x:x+4], 2))
+	
+		return(Hex.replace('0x', ''))
+
+	def MUI(self, rA = 0, rB = 0, Immediate = 0, UF = 1):
+		Instr = '0001000'
+		Instr += ("0"*8+(bin(rA)[2:]))[-5:]
+		Instr += ("0"*8+(bin(rB)[2:]))[-5:]
+		Instr += ("0"*8+(bin(Immediate)[2:]))[-7:]
+		Instr += '01'
+		Instr += ("0"*26+(bin(UF)[2:]))[-1:]
+	
+		return(self.Bin2Hex(Instr))
+
+	def MIUM(self, rA = 0, rB = 0, Immediate = 0, UF = 1):
+		Instr = '0001010'
+		Instr += ("0"*8+(bin(rA)[2:]))[-5:]
+		Instr += ("0"*8+(bin(rB)[2:]))[-5:]
+		Instr += ("0"*8+(bin(Immediate)[2:]))[-7:]
+		Instr += '01'
+		Instr += ("0"*26+(bin(UF)[2:]))[-1:]
+	
+		return(self.Bin2Hex(Instr))
+
+	def MUIS(self, rA = 0, rB = 0, Immediate = 0, UF = 1):
+		Instr = '0001000'
+		Instr += ("0"*8+(bin(rA)[2:]))[-5:]
+		Instr += ("0"*8+(bin(rB)[2:]))[-5:]
+		Instr += ("0"*8+(bin(Immediate)[2:]))[-7:]
+		Instr += '11'
+		Instr += ("0"*26+(bin(UF)[2:]))[-1:]
+
+		return(self.Bin2Hex(Instr))
+
+	def OR(self, rA = 0, rB = 0, rC = 0, UF = 1):
+		Instr = '0011000'
+		Instr += ("0"*8+(bin(rA)[2:]))[-5:]
+		Instr += ("0"*8+(bin(rB)[2:]))[-5:]
+		Instr += ("0"*8+(bin(rC)[2:]))[-5:]
+		Instr += '0000'
+		Instr += ("0"*26+(bin(UF)[2:]))[-1:]
+
+		return(self.Bin2Hex(Instr))
+
+	def STS(self, rA = 0, rB = 0, RegCount = 0, AdjustRb = 0, MemOffset = 0):
+		Instr = '1011000'
+		Instr += ("0"*8+(bin(rA)[2:]))[-5:]
+		Instr += ("0"*8+(bin(rB)[2:]))[-5:]
+		Instr += ("0"*8+(bin(RegCount)[2:]))[-5:]
+		Instr += ("0"*8+(bin(AdjustRb)[2:]))[-2:]
+		Instr += ("0"*26+(bin(MemOffset)[2:]))[-27:]
+		Instr += '000'
+	
+		return(self.Bin2Hex(Instr))
+
+	def STT(self, rA = 0, rB = 0, RegCount = 0, AdjustRb = 0, MemOffset = 0):
+		Instr = '1011010'
+		Instr += ("0"*8+(bin(rA)[2:]))[-5:]
+		Instr += ("0"*8+(bin(rB)[2:]))[-5:]
+		Instr += ("0"*8+(bin(RegCount)[2:]))[-5:]
+		Instr += ("0"*8+(bin(AdjustRb)[2:]))[-2:]
+		Instr += ("0"*26+(bin(MemOffset)[2:]))[-27:]
+		Instr += '000'
+	
+		return(self.Bin2Hex(Instr))
+
+	def ML(self, rA = 0, Immediate = 0):
+		Instr = '10010'
+		Instr += ("0"*8+(bin(rA)[2:]))[-5:]
+		Instr += ("0"*26+(bin(Immediate)[2:]))[-17:]
+	
+		return(self.Bin2Hex(Instr))
+	
+	def MH(self, rA = 0, Immediate = 0):
+		Instr = '10001'
+		Instr += ("0"*8+(bin(rA)[2:]))[-5:]
+		Instr += ("0"*26+(bin(Immediate)[2:]))[-17:]
+	
+		return(self.Bin2Hex(Instr))
+
+def MakeSc(code):
+	sc = []
+	for line in code.split('\n'):
+		# main  0005df7: 4820000          ml	R01, 0x0
+		m = re.search(r"\s+([0-9a-f]+)\s+", line)
+		if m:
+			if len(m.group(1)) == 7:
+				instr = int(m.group(1), 16)
+				sc.append((instr>>9) & 0x1ff)
+				sc.append((instr>>18) & 0x1ff)
+				sc.append(instr & 0x1ff)
+			elif len(m.group(1)) == 14:
+				instr = int(m.group(1)[0:7], 16)
+				sc.append((instr>>8) & 0x1ff)
+				sc.append((instr>>17) & 0x1ff)
+				sc.append(instr & 0x1ff)
+				instr = int(m.group(1)[7:14], 16)
+				sc.append((instr>>8) & 0x1ff)
+				sc.append((instr>>17) & 0x1ff)
+				sc.append(instr & 0x1ff)
+	
+	# HT
+	sc.append(192)
+	sc.append(320)
+
+	if len(sc) > 54:
+		print "Code too long"
+		sys.exit(0)
+	for x in range(len(sc), 54):
+		sc.append(0)
+
+	return sc
+
+def Data_8_to_9(InData):
+	#don't feel like doing all the math, make a bit list then reparse it
+	Bits = ""
+	for i in InData:
+		Bits += (("0"*9)+bin(ord(i))[2:])[-9:]
+
+	#now add in enough bits to make sure we can send full bytes
+	if len(Bits) % 8:
+		Bits += "0"*(8-(len(Bits) % 8))
+
+	Output = ""
+	for i in xrange(0, len(Bits), 8):
+		Output += chr(int(Bits[i:i+8], 2))
+
+	return Output
+
+def Data_9_to_8(InData):
+	#don't feel like doing all the math, make a bit list then reparse it
+	Bits = ""
+	for i in InData:
+		Bits += (("0"*8)+bin(ord(i))[2:])[-8:]
+
+	#now add in enough bits to make sure we can send full bytes
+	if len(Bits) % 9:
+		Bits += "0"*(9-(len(Bits) % 9))
+
+	Output = ""
+	for i in xrange(0, len(Bits), 9):
+		#just ignore the first bit of all bytes as our tests
+		#are all ascii based
+		c = int(Bits[i+1:i+9], 2)
+		if c > 31 and c < 128:
+			Output += chr(int(Bits[i+1:i+9], 2))
+		else:
+			Output += hex(int(Bits[i+1:i+9], 2)) + " "
+
+	return Output
+
+def Data_9_to_8_fixed(InData):
+	#don't feel like doing all the math, make a bit list then reparse it
+	Bits = ""
+	for i in InData:
+		Bits += (("0"*8)+bin(ord(i))[2:])[-8:]
+
+	Output = ""
+	i = 0
+	bytecount = 0
+	while i < len(Bits):
+		if i+9 > len(Bits):
+			break;
+
+		c = int(Bits[i+1:i+9], 2)
+		bytecount += 1
+		Output += chr(c)
+		if c == 0xa:
+			bitstoeat = 8 - (((bytecount*9)+8) % 8)
+			i += bitstoeat
+			bytecount = 0
+		i += 9
+
+	return Output
+
+def SendSc(s, sc):
+	Data = s.recv(4096)
+	Data = Data_9_to_8_fixed(Data)
+	sys.stdout.write(Data)
+	sys.stdout.flush()
+
+	out = ",".join(str(x) for x in sc)
+	Data = Data_8_to_9(out+"\n")
+	sys.stdout.write(out+"\n")
+	s.send(Data)
+
+def SolveCube(s, solution):
+	for action in solution.split(' '):
+		# send the action
+		Data = Data_8_to_9(action+"\n")
+		sys.stdout.write(action+"\n")
+		s.send(Data)
+
+		# make sure we got the expected response
+		time.sleep(1)
+		Data = s.recv(4096)
+		Data8 = Data_9_to_8_fixed(Data)
+		if re.search("Invalid", Data8):
+			# unexpected response
+			print "Unexpected response: {}".format(Data8)
+			sys.exit(0)
+		if re.search("Failed", Data8):
+			# unexpected response
+			print "Unexpected response: {}".format(Data8)
+			sys.exit(0)
+		m = re.match("^.*Solved.(.*)$", Data8, re.DOTALL)
+		if m:
+			print Data8
+			return m.group(1)
+		sys.stdout.write(Data8)
+
+c = cLEMENCy()
+print c.STS(c.R08, c.R01, MemOffset = 1)
+print c.ML(c.R01, Immediate = 0x0)
+print c.MH(c.R01, Immediate = 0x14040)
+print c.STT(c.R08, c.R01) 
+print c.MUIS(c.R09, c.R08, 0x9) 
+print c.OR(c.R01, c.R08, c.R08)
+
+sys.exit(0)
+
+if len(sys.argv) == 3:
+	s = socket.create_connection([sys.argv[1], sys.argv[2]])
+else:
+	s = socket.create_connection(['127.0.0.1', 4000])
+
+
+choice = random.choice(range(0, 2))
+print "Choice: {}".format(choice)
+if Polls[choice]['sc'] == '':
+	Polls[choice]['sc'] = MakeSc(Polls[choice]['code'])
+SendSc(s, Polls[choice]['sc'])
+time.sleep(1)
+select.select([s.fileno(), 0], [], [])
+Data = s.recv(4096)
+Data8 = Data_9_to_8_fixed(Data)
+sys.stdout.write(Data8)
+Response = SolveCube(s, Polls[choice]['solution'])
+if Response == Polls[choice]['result']:
+	print "Correct"
+else:
+	print "Incorrect: |{}|".format(Response)
+
+#while(1):
+#	(r,w,e) = select.select([s.fileno(), 0], [], [])
+#	if len(r) == 0:
+#		break
+#
+#	#read from one and send to the other
+#	try:
+#		if r[0] == s.fileno():
+#			Data = s.recv(4096)
+#			if len(Data) == 0:
+#				break;
+#			Data8 = Data_9_to_8_fixed(Data)
+#			sys.stdout.write(Data8)
+#			sys.stdout.flush()
+#		else:
+#			Data = sys.stdin.readline()
+#			Data = Data_8_to_9(Data)
+#			s.send(Data)
+#	except Exception as ex:
+#		print ex
+#		break
+

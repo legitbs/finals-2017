@@ -1,0 +1,4 @@
+#!/bin/bash
+
+for bin in *_test_x86; do ./"$bin"; done
+for bin in *_test_ccy; do ../../../lightning/cLEMENCy/cLEMENCy-emu/clemency-emu-debug -d 0 -s "$bin"; done

@@ -1,0 +1,4 @@
+def powtest(a,b):
+	return hex(pow(a,b,0x5aeb35b))
+
+print powtest(2,0x8202aa)
